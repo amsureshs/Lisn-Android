@@ -14,18 +14,17 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
-import android.media.AudioManager;
-import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.preference.PreferenceManager;
 import android.provider.Settings;
-import android.support.design.widget.CollapsingToolbarLayout;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.ActivityOptionsCompat;
 import android.support.v4.content.ContextCompat;
@@ -46,10 +45,12 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ListAdapter;
+import android.widget.ListView;
 import android.widget.PopupWindow;
 import android.widget.ProgressBar;
 import android.widget.RatingBar;
@@ -68,12 +69,14 @@ import com.facebook.share.model.ShareOpenGraphAction;
 import com.facebook.share.model.ShareOpenGraphContent;
 import com.facebook.share.model.ShareOpenGraphObject;
 import com.facebook.share.widget.ShareDialog;
-import com.ms.square.android.expandabletextview.ExpandableTextView;
+import com.philjay.valuebar.ValueBar;
+import com.philjay.valuebar.colors.BarColorFormatter;
+import com.philjay.valuebar.colors.RedToGreenFormatter;
 import com.squareup.picasso.Picasso;
+import com.squareup.picasso.Target;
 
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.OutputStream;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -104,32 +107,37 @@ import audio.lisn.util.CustomTypeFace;
 import audio.lisn.util.Log;
 import audio.lisn.util.OnSwipeTouchListener;
 import audio.lisn.util.WCLinearLayoutManager;
-import audio.lisn.util.WakeLocker;
+import audio.lisn.view.ExpandablePanel;
+import audio.lisn.view.ExpandableTextView;
 import audio.lisn.view.PlayerControllerView;
 import audio.lisn.webservice.FileDownloadTask;
 import audio.lisn.webservice.FileDownloadTaskListener;
 import audio.lisn.webservice.JsonUTF8StringRequest;
 
-public class AudioBookDetailActivity extends  AppCompatActivity implements Runnable,FileDownloadTaskListener,AuthorizationListener {
+//import com.ms.square.android.expandabletextview.ExpandableTextView;
+
+public class AudioBookDetailActivity extends  AppCompatActivity implements FileDownloadTaskListener,AuthorizationListener {
 
     private static final String TRANSITION_NAME = "audio.lisn.AudioBookDetailActivity";
-    private CollapsingToolbarLayout collapsingToolbarLayout;
+    public static final String TAG = AudioBookDetailActivity.class.getSimpleName();
+
+    //  private CollapsingToolbarLayout collapsingToolbarLayout;
     AudioBook audioBook;
-    ImageButton previewPlayButton;
-    Button btnReview;
-    MediaPlayer mediaPlayer = null;
+    //ImageButton previewPlayButton;
+    //MediaPlayer mediaPlayer = null;
     ConnectionDetector connectionDetector;
 
-    public RelativeLayout previewLayout;
-    public TextView previewLabel,timeLabel;
+    //public RelativeLayout previewLayout;
+    //public TextView previewLabel,timeLabel;
     public ProgressBar spinner;
-    private boolean isPlayingPreview,isLoadingPreview;
-    String leftTime;
+   // private boolean isPlayingPreview,isLoadingPreview;
+   // String leftTime;
     ProgressDialog mProgressDialog;
     ProgressDialog progressDialog;
     int totalAudioFileCount, downloadedFileCount;
     List<FileDownloadTask> downloadingList = new ArrayList<FileDownloadTask>();
     ImageView bookCoverImage;
+    ImageView bookCoverImageBack;
     private PopupWindow pwindo;
     int previousDownloadedFileCount;
     PlayerControllerView playerControllerView;
@@ -160,6 +168,8 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
     PaymentOption  paymentOption;
     Thread timerUpdateThread;
     String subscriberId;
+    ListView chapterListView ;
+
 
 
     public static void navigate(AppCompatActivity activity, View transitionImage, AudioBook audioBook) {
@@ -184,9 +194,11 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
         String itemTitle = audioBook.getEnglish_title();
-        collapsingToolbarLayout = (CollapsingToolbarLayout) findViewById(R.id.collapsing_toolbar);
-        collapsingToolbarLayout.setTitle(itemTitle);
-        collapsingToolbarLayout.setExpandedTitleColor(getResources().getColor(android.R.color.transparent));
+        getSupportActionBar().setTitle(itemTitle);
+
+//        collapsingToolbarLayout = (CollapsingToolbarLayout) findViewById(R.id.collapsing_toolbar);
+//        collapsingToolbarLayout.setTitle(itemTitle);
+//        collapsingToolbarLayout.setExpandedTitleColor(getResources().getColor(android.R.color.transparent));
 
         connectionDetector = new ConnectionDetector(getApplicationContext());
 
@@ -222,7 +234,22 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
             }
 
         });
+        mProgressDialog = new ProgressDialog(AudioBookDetailActivity.this);
+        mProgressDialog.setMessage("Downloading file..");
+        mProgressDialog.setTitle("Download in progress ...");
+        mProgressDialog.setIndeterminate(true);
+        mProgressDialog.setCancelable(true);
+        mProgressDialog.setButton(DialogInterface.BUTTON_NEGATIVE, "Cancel", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+                stopDownload();
+            }
+        });
 
+        progressDialog = new ProgressDialog(AudioBookDetailActivity.this);
+        progressDialog.setIndeterminate(true);
+        progressDialog.setMessage("Publishing...");
 
     }
     @Override
@@ -243,9 +270,9 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
     @Override
     public void onPause() {
         super.onPause();
-        if(mediaPlayer !=null && mediaPlayer.isPlaying()){
-            mediaPlayer.stop();
-        }
+//        if(mediaPlayer !=null && mediaPlayer.isPlaying()){
+//            mediaPlayer.stop();
+//        }
     }
 
     @Override
@@ -432,7 +459,10 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
     }
 
     private void showAudioPlayer(){
-        PlayerControllerActivity.navigate(this, playerControllerView, null);
+
+        if(AppController.getInstance().getCurrentAudioBook() !=null) {
+            PlayerControllerActivity.navigate(AudioBookDetailActivity.this, playerControllerView, null);
+        }
 
     }
     private void showBookReview(){
@@ -446,31 +476,85 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
         Point size = new Point();
         display.getSize(size);
 
-        ImageView bookBannerImage = (ImageView) findViewById(R.id.bookBannerImage);
-        ViewGroup.LayoutParams params = bookBannerImage.getLayoutParams();
-        params.height=(int)(size.x/2);
-        bookBannerImage.setLayoutParams(params);
+//        ImageView bookBannerImage = (ImageView) findViewById(R.id.bookBannerImage);
+//        ViewGroup.LayoutParams params = bookBannerImage.getLayoutParams();
+//        params.height=(int)(size.x/2);
+//        bookBannerImage.setLayoutParams(params);
 
         // String bannerImageUrl="http://lorempixel.com/500/500/animals/8/";
-        String bannerImageUrl=audioBook.getBanner_image();
-
-        Picasso.with(this)
-                .load(bannerImageUrl)
-                .placeholder(R.drawable.default_banner)
-                .into(bookBannerImage);
+//        String bannerImageUrl=audioBook.getBanner_image();
+//
+//        Picasso.with(this)
+//                .load(bannerImageUrl)
+//                .placeholder(R.drawable.default_banner)
+//                .into(bookBannerImage);
 
         bookCoverImage = (ImageView) findViewById(R.id.bookCoverImage);
-        Picasso.with(this)
-                .load(audioBook.getCover_image())
-                .placeholder(R.drawable.ic_launcher)
-                .into(bookCoverImage);
-
-        // ViewGroup.LayoutParams params = bookCoverImage.getLayoutParams();
         RelativeLayout.LayoutParams bookCoverImageLayoutParams =
                 (RelativeLayout.LayoutParams)bookCoverImage.getLayoutParams();
         bookCoverImageLayoutParams.width= (int) ((size.x-60)/3);
 
         bookCoverImage.setLayoutParams(bookCoverImageLayoutParams);
+        View topOverLayView=(View)findViewById(R.id.topOverLayView);
+
+        bookCoverImageBack = (ImageView) findViewById(R.id.bookCoverImageBack);
+        RelativeLayout.LayoutParams bookCoverImageBackLayoutParams =
+                (RelativeLayout.LayoutParams)bookCoverImageBack.getLayoutParams();
+        bookCoverImageBackLayoutParams.height= size.x;
+
+        bookCoverImageBack.setLayoutParams(bookCoverImageBackLayoutParams);
+        topOverLayView.setLayoutParams(bookCoverImageBackLayoutParams);
+
+
+
+        Picasso.with(this)
+                .load(audioBook.getCover_image())
+                .into(new Target() {
+                    @Override
+                    public void onBitmapLoaded (final Bitmap bitmap, Picasso.LoadedFrom from){
+            /* Save the bitmap or do something with it here */
+
+                        //Set it in the ImageView
+                        bookCoverImageBack.setImageBitmap(bitmap);
+                        bookCoverImage.setImageBitmap(bitmap);
+                        if (Build.VERSION.SDK_INT >= 18) {
+
+                            Bitmap blurred = AppUtils.blurRenderScript(bitmap, 5,getApplicationContext());//second parametre is radius
+                            bookCoverImageBack.setImageBitmap(blurred);
+                        }
+                    }
+
+                    @Override
+                    public void onBitmapFailed(Drawable errorDrawable) {
+
+                    }
+
+                    @Override
+                    public void onPrepareLoad(Drawable placeHolderDrawable) {
+
+                    }
+                });
+
+//        if(imgFile.exists()) {
+//            BitmapFactory.Options bmOptions = new BitmapFactory.Options();
+//            bitmap = BitmapFactory.decodeFile(imgFile.getAbsolutePath(), bmOptions);
+//        }else{
+//            bitmap = BitmapFactory.decodeResource(getResources(),
+//                    R.drawable.ui_bg_logo);
+//        }
+
+//        Picasso.with(this)
+//                .load(audioBook.getCover_image())
+//                .placeholder(R.drawable.ic_launcher)
+//                .into(bookCoverImageBack);
+
+//        Picasso.with(this)
+//                .load(audioBook.getCover_image())
+//                .placeholder(R.drawable.ic_launcher)
+//                .into(bookCoverImage);
+
+        // ViewGroup.LayoutParams params = bookCoverImage.getLayoutParams();
+
 
         String narratorText="";
         String durationText="";
@@ -491,8 +575,8 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
         LinearLayout rateLayout=(LinearLayout)findViewById(R.id.app_rate_layout);
 
         View separator_top_description=(View)findViewById(R.id.separator_top_description);
-        View separator_top_rateLayout=(View)findViewById(R.id.separator_top_rateLayout);
-        View separator_top_reviewContainer=(View)findViewById(R.id.separator_top_reviewContainer);
+        //View separator_top_rateLayout=(View)findViewById(R.id.separator_top_rateLayout);
+       // View separator_top_reviewContainer=(View)findViewById(R.id.separator_top_reviewContainer);
 
         Button btnDownload=(Button)findViewById(R.id.btnDownload);
         btnDownload.setOnClickListener(new View.OnClickListener() {
@@ -524,7 +608,7 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
 
         RatingBar ratingBar = (RatingBar) findViewById(R.id.rating_bar);
         LayerDrawable stars1 = (LayerDrawable) ratingBar.getProgressDrawable();
-        stars1.getDrawable(2).setColorFilter(ContextCompat.getColor(getApplicationContext(), R.color.colorPrimary), PorterDuff.Mode.SRC_ATOP);
+        //stars1.getDrawable(2).setColorFilter(ContextCompat.getColor(getApplicationContext(), R.color.colorPrimary), PorterDuff.Mode.SRC_ATOP);
 
 
         RatingBar userRatingBar = (RatingBar) findViewById(R.id.user_rate_bar);
@@ -534,36 +618,124 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
         userRatingBar.setOnRatingBarChangeListener(new RatingBar.OnRatingBarChangeListener() {
 
             public void onRatingChanged(RatingBar ratingBar, float rating, boolean fromUser) {
-                if(fromUser){
+                if (fromUser) {
                     initiatePopupWindow(rating);
                 }
 
             }
 
         });
-        previewPlayButton = (ImageButton) findViewById(R.id.previewPlayButton);
-        previewPlayButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                playPreviewButtonPressed();
 
+        ValueBar valueBar5=(ValueBar)findViewById(R.id.valueBar5);
+        setPropertyToValueBar(valueBar5);
+        valueBar5.setValue(100f); // display a value
+        valueBar5.setColorFormatter(new BarColorFormatter() {
+            @Override
+            public int getColor(float v, float v1, float v2) {
+                return Color.rgb(138, 194, 73);
             }
         });
 
-        previewLayout=(RelativeLayout)findViewById(R.id.preview_layout);
-        RelativeLayout.LayoutParams previewLayoutLayoutParams =
-                (RelativeLayout.LayoutParams)previewLayout.getLayoutParams();
-        previewLayoutLayoutParams.width= (int) ((size.x-60)/3);
+        ValueBar valueBar4=(ValueBar)findViewById(R.id.valueBar4);
+        setPropertyToValueBar(valueBar4);
+        valueBar4.setValue(400f); // display a value
+        valueBar4.setColorFormatter(new BarColorFormatter() {
+            @Override
+            public int getColor(float v, float v1, float v2) {
+                return Color.rgb(204, 219, 56);
+            }
+        });
 
-        previewLayout.setLayoutParams(previewLayoutLayoutParams);
-        previewLabel=(TextView)findViewById(R.id.preview_label);
-        timeLabel=(TextView)findViewById(R.id.time_label);
-        RelativeLayout.LayoutParams timeLabelLayoutParams =
-                (RelativeLayout.LayoutParams)timeLabel.getLayoutParams();
-        timeLabelLayoutParams.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE);
+        ValueBar valueBar3=(ValueBar)findViewById(R.id.valueBar3);
+        setPropertyToValueBar(valueBar3);
+        valueBar3.setValue(0f); // display a value
+        valueBar3.setColorFormatter(new BarColorFormatter() {
+            @Override
+            public int getColor(float v, float v1, float v2) {
+                return Color.rgb(255, 234, 58);
+            }
+        });
+
+        ValueBar valueBar2=(ValueBar)findViewById(R.id.valueBar2);
+        setPropertyToValueBar(valueBar2);
+        valueBar2.setValue(800f); // display a value
+        valueBar2.setColorFormatter(new BarColorFormatter() {
+            @Override
+            public int getColor(float v, float v1, float v2) {
+                return Color.rgb(255, 178, 51);
+            }
+        });
+
+        ValueBar valueBar1=(ValueBar)findViewById(R.id.valueBar1);
+        setPropertyToValueBar(valueBar1);
+        valueBar1.setValue(500f); // display a value
+        valueBar1.setColorFormatter(new BarColorFormatter() {
+            @Override
+            public int getColor(float v, float v1, float v2) {
+                return Color.rgb(255, 139, 90);
+            }
+        });
+
+//        previewPlayButton = (ImageButton) findViewById(R.id.previewPlayButton);
+//        previewPlayButton.setOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View v) {
+//                playPreviewButtonPressed();
+//
+//            }
+//        });
+
+//        previewLayout=(RelativeLayout)findViewById(R.id.preview_layout);
+//        RelativeLayout.LayoutParams previewLayoutLayoutParams =
+//                (RelativeLayout.LayoutParams)previewLayout.getLayoutParams();
+//        previewLayoutLayoutParams.width= (int) ((size.x-60)/3);
+//
+//        previewLayout.setLayoutParams(previewLayoutLayoutParams);
+//        previewLabel=(TextView)findViewById(R.id.preview_label);
+//        timeLabel=(TextView)findViewById(R.id.time_label);
+//        RelativeLayout.LayoutParams timeLabelLayoutParams =
+//                (RelativeLayout.LayoutParams)timeLabel.getLayoutParams();
+//        timeLabelLayoutParams.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE);
 
 
+        // Get ListView object from xml
+        chapterListView = (ListView) findViewById(R.id.chapter_list);
+
+        // Defined Array values to show in ListView
+        String[] values = new String[] { "Chapter 1",
+                "Chapter 2",
+                "Chapter 3",
+                "Chapter 4",
+                "Chapter 5",
+                "Chapter 6",
+                "Chapter 7",
+                "Chapter 8"
+        };
+
+        // Define a new Adapter
+        // First parameter - Context
+        // Second parameter - Layout for the row
+        // Third parameter - ID of the TextView to which the data is written
+        // Forth - the Array of data
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
+                R.layout.view_book_chapter_item, R.id.chapter_title, values);
+
+
+        // Assign adapter to ListView
+        chapterListView.setAdapter(adapter);
+        ExpandablePanel expandablePanel=(ExpandablePanel)findViewById(R.id.buy_chapter);
+        expandablePanel.setContentHeight(getListViewHeightBasedOnChildren(chapterListView));
+        expandablePanel.requestLayout();
         spinner = (ProgressBar)findViewById(R.id.progressBar);
+
+
+        TextView reviewRatingValue=(TextView)findViewById(R.id.reviewRatingValue);
+        RatingBar reviewRatingBar=(RatingBar)findViewById(R.id.reviewRatingBar);
+
+        TextView ratingValue2=(TextView)findViewById(R.id.ratingValue2);
+        RatingBar ratingBar2=(RatingBar)findViewById(R.id.ratingBar2);
+
 
         if(audioBook.getLanguageCode()== AudioBook.LanguageCode.LAN_SI){
             descriptionTextView.setTypeface(CustomTypeFace.getSinhalaTypeFace(getApplicationContext()));
@@ -595,7 +767,11 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
             ratingBar.setRating(Float.parseFloat(audioBook.getRate()));
             ratingValue.setText(String.format("%.1f", Float.parseFloat(audioBook.getRate())));
 
+            reviewRatingBar.setRating(Float.parseFloat(audioBook.getRate()));
+            reviewRatingValue.setText(String.format("%.1f", Float.parseFloat(audioBook.getRate())));
 
+            ratingBar2.setRating(Float.parseFloat(audioBook.getRate()));
+            ratingValue2.setText(String.format("%.1f", Float.parseFloat(audioBook.getRate())));
         }
 
         narratorText=narratorText+" - "+audioBook.getNarrator();
@@ -614,17 +790,21 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
         }else{
         }
 
+        //int height = descriptionTextView.getMeasuredHeight();
+        //Log.v(TAG,"height :"+height);
+
+
         btnPayFromCard.setText("Pay by Card (" + audioBook.getDiscount() + "% discount)");
 
         if(AppController.getInstance().isUserLogin() && audioBook.isPurchase()){
-            previewPlayButton.setVisibility(View.GONE);
+            //previewPlayButton.setVisibility(View.GONE);
             btnDownload.setText("Download");
             btnDownload.setVisibility(View.VISIBLE);
 
             if(audioBook.getAudioFileCount() == audioBook.getDownloadedChapter().size()){
                 btnDownload.setText("Play");
             }
-            separator_top_rateLayout.setVisibility(View.VISIBLE);
+           // separator_top_rateLayout.setVisibility(View.VISIBLE);
             rateLayout.setVisibility(View.VISIBLE);
             userRatingBar.setRating(0);
             addToBillButton.setVisibility(View.GONE);
@@ -659,20 +839,21 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
 
         }
 
-        ImageButton  btnShare=(ImageButton)findViewById(R.id.btnShare);
+       // LinearLayout  btnShare=(LinearLayout)findViewById(R.id.shareLayout);
 
-        btnShare.setOnClickListener(new View.OnClickListener() {
+
+       LinearLayout shareLayout=(LinearLayout)findViewById(R.id.shareLayout);
+        shareLayout.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 shareBook();
             }
         });
-       LinearLayout shareLayout=(LinearLayout)findViewById(R.id.shareLayout);
-        if(AppController.getInstance().isUserLogin() && audioBook.isPurchase()) {
-            shareLayout.setVisibility(View.VISIBLE);
-        }else{
-            shareLayout.setVisibility(View.INVISIBLE);
-        }
+//        if(AppController.getInstance().isUserLogin() && audioBook.isPurchase()) {
+//            shareLayout.setVisibility(View.VISIBLE);
+//        }else{
+//            shareLayout.setVisibility(View.INVISIBLE);
+//        }
 
 
 
@@ -682,16 +863,16 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
             reviewsCount=audioBook.getReviews().size();
         final int finalReviewsCount = reviewsCount;
 
-        if(finalReviewsCount>0){
-            separator_top_reviewContainer.setVisibility(View.VISIBLE);
-
-        }
-        btnReview=(Button)findViewById(R.id.btnReview);
-        btnReview.setOnClickListener(new View.OnClickListener() {
+//        if(finalReviewsCount>0){
+//            separator_top_reviewContainer.setVisibility(View.VISIBLE);
+//
+//        }
+        LinearLayout reviewLayout=(LinearLayout)findViewById(R.id.reviewLayout);
+        reviewLayout.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
 
-                if(finalReviewsCount >0){
+                if (finalReviewsCount > 0) {
                     showBookReview();
 
                 }
@@ -701,7 +882,7 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
         });
 
 
-        btnReview.setText(""+reviewsCount);
+       // btnReview.setText(""+reviewsCount);
 
 
         TextView allReviews=(TextView)findViewById(R.id.all_reviews);
@@ -736,28 +917,41 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
         bookReviewViewAdapter=new BookReviewViewAdapter(getApplicationContext(),reviews);
         reviewContainer.setAdapter(bookReviewViewAdapter);
 
-        mProgressDialog = new ProgressDialog(AudioBookDetailActivity.this);
-        mProgressDialog.setMessage("Downloading file..");
-        mProgressDialog.setTitle("Download in progress ...");
-        mProgressDialog.setIndeterminate(true);
-        mProgressDialog.setCancelable(true);
-        mProgressDialog.setButton(DialogInterface.BUTTON_NEGATIVE, "Cancel", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                dialog.dismiss();
-                stopDownload();
-            }
-        });
 
-        progressDialog = new ProgressDialog(AudioBookDetailActivity.this);
-        progressDialog.setIndeterminate(true);
-        progressDialog.setMessage("Publishing...");
+//for testing
+        addToBillButton.setVisibility(View.GONE);
+        btnPayFromCard.setVisibility(View.GONE);
 
 
 
 
     }
+    private int getListViewHeightBasedOnChildren(ListView listView) {
+        ListAdapter listAdapter = listView.getAdapter();
+        if (listAdapter == null) {
+            // pre-condition
+            return 0;
+        }
 
+        int totalHeight = listView.getPaddingTop() + listView.getPaddingBottom();
+        Log.v("totalHeight","totalHeight"+totalHeight);
+        int desiredWidth = View.MeasureSpec.makeMeasureSpec(listView.getWidth(), View.MeasureSpec.AT_MOST);
+        for (int i = 0; i < listAdapter.getCount(); i++) {
+            View listItem = listAdapter.getView(i, null, listView);
+
+            if(listItem != null){
+                // This next line is needed before you call measure or else you won't get measured height at all. The listitem needs to be drawn first to know the height.
+                listItem.setLayoutParams(new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT));
+                listItem.measure(desiredWidth, View.MeasureSpec.UNSPECIFIED);
+                Log.v("totalHeight", "listItem.getMeasuredHeight()" + listItem.getMeasuredHeight());
+
+                totalHeight += listItem.getMeasuredHeight();
+
+            }
+        }
+
+       return totalHeight;
+    }
     private void stopDownload(){
         for (int i = 0; i < downloadingList.size(); i++) {
             FileDownloadTask downloadTask = downloadingList.get(i);
@@ -766,124 +960,137 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
         }
     }
 
-
-    private void updatePreviewLayout(){
-        if(isLoadingPreview || isPlayingPreview){
-           // setLayoutMargin(true);
-            previewLayout.setVisibility(View.VISIBLE);
-            previewPlayButton.setImageResource(R.drawable.btn_play_preview_pause);
-
-            if(isPlayingPreview){
-                spinner.setVisibility(View.INVISIBLE);
-                previewLabel.setText("Preview");
-                timeLabel.setText(leftTime);
-
-            }else{
-                spinner.setVisibility(View.VISIBLE);
-                previewLabel.setText("Loading...");
-                timeLabel.setText("");
-            }
-        }else{
-           // setLayoutMargin(false);
-            previewLayout.setVisibility(View.INVISIBLE);
-            previewPlayButton.setImageResource(R.drawable.btn_play_preview_start);
-        }
-    }
-
-    private void playPreviewButtonPressed(){
-        if (audioBook.getPreview_audio() !=null && (audioBook.getPreview_audio().length()>0)) {
-            boolean stopPlayer = false;
-            if(isLoadingPreview || isPlayingPreview ){
-                stopPlayer=true;
-            }
-
-            if(stopPlayer){
-                if(mediaPlayer.isPlaying()){
-                    mediaPlayer.stop();
-                    new Thread(this).interrupt();
-                }
-
-                mediaPlayer.reset();
-                isPlayingPreview=false;
-                isLoadingPreview=false;
-
-            }else{
-                playPreview();
-            }
-
-        }
-        updatePreviewLayout();
-    }
-    private void playPreview( ) {
-
-        isLoadingPreview=true;
-        isPlayingPreview=false;
-        if (connectionDetector.isConnectingToInternet()) {
-            pausePlayer();
-            if (mediaPlayer == null) {
-                mediaPlayer = new MediaPlayer();
-            }
-            if (mediaPlayer.isPlaying()) {
-                mediaPlayer.stop();
-                if( timerUpdateThread != null ) {
-                    timerUpdateThread.interrupt();
-                }
-            }
-
-            mediaPlayer.reset();
-
-            mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-            try {
-                mediaPlayer.setDataSource(audioBook.getPreview_audio());
-            } catch (IOException e) {
-                Log.v("playPreview", "IOException" + e.getMessage());
-
-                e.printStackTrace();
-            }
-            mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-                public void onPrepared(MediaPlayer mp) {
-                    isPlayingPreview=true;
-                    isLoadingPreview=false;
-                    startTimer();
-                    mp.start();
-                    updatePreviewLayout();
-                    WakeLocker.acquire(getApplicationContext());
-                }
-            });
-            mediaPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
-                public boolean onError(MediaPlayer mp, int what, int extra) {
-
-                    return false;
-                }
-            });
-            mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                @Override
-                public void onCompletion(MediaPlayer mp) {
-                    isPlayingPreview=false;
-                    isLoadingPreview=false;
-                    stopTimer();
-                    updatePreviewLayout();
-                    WakeLocker.release();
-
-                }
-            });
-            mediaPlayer.prepareAsync(); // prepare async to not block main
-
-
-        } else {
-
-            AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            builder.setTitle(R.string.NO_INTERNET_TITLE).setMessage(getString(R.string.NO_ENOUGH_SPACE_MESSAGE)).setPositiveButton(
-                    getString(R.string.BUTTON_OK), new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int id) {
-                            // FIRE ZE MISSILES!
-                        }
-                    });
-            AlertDialog dialog = builder.create();
-            dialog.show();
-        }
+    private ValueBar setPropertyToValueBar(ValueBar valueBar){
+        valueBar.setMinMax(0, 1000);
+        valueBar.setInterval(1f); // interval in which can be selected
+        valueBar.setDrawBorder(false);
+        valueBar.setDrawValueText(false);
+        valueBar.setColorFormatter(new RedToGreenFormatter());
+        return valueBar;
 
     }
+
+
+//    private void updatePreviewLayout(){
+//        if(isLoadingPreview || isPlayingPreview){
+//           // setLayoutMargin(true);
+//            previewLayout.setVisibility(View.VISIBLE);
+//            previewPlayButton.setImageResource(R.drawable.btn_play_preview_pause);
+//
+//            if(isPlayingPreview){
+//                spinner.setVisibility(View.INVISIBLE);
+//                previewLabel.setText("Preview");
+//                timeLabel.setText(leftTime);
+//
+//            }else{
+//                spinner.setVisibility(View.VISIBLE);
+//                previewLabel.setText("Loading...");
+//                timeLabel.setText("");
+//            }
+//        }else{
+//           // setLayoutMargin(false);
+//            previewLayout.setVisibility(View.INVISIBLE);
+//            previewPlayButton.setImageResource(R.drawable.btn_play_preview_start);
+//        }
+//    }
+
+
+//    private void playPreviewButtonPressed(){
+//        if (audioBook.getPreview_audio() !=null && (audioBook.getPreview_audio().length()>0)) {
+//            boolean stopPlayer = false;
+//            if(isLoadingPreview || isPlayingPreview ){
+//                stopPlayer=true;
+//            }
+//
+//            if(stopPlayer){
+//                if(mediaPlayer != null) {
+//                    if (mediaPlayer.isPlaying()) {
+//                        mediaPlayer.stop();
+//                        new Thread(this).interrupt();
+//                    }
+//
+//                    mediaPlayer.reset();
+//                }
+//                isPlayingPreview=false;
+//                isLoadingPreview=false;
+//
+//            }else{
+//                playPreview();
+//            }
+//
+//        }
+//        updatePreviewLayout();
+//    }
+//    private void playPreview( ) {
+//
+//        isLoadingPreview=true;
+//        isPlayingPreview=false;
+//        if (connectionDetector.isConnectingToInternet()) {
+//            pausePlayer();
+//            if (mediaPlayer == null) {
+//                mediaPlayer = new MediaPlayer();
+//            }
+//            if (mediaPlayer.isPlaying()) {
+//                mediaPlayer.stop();
+//                if( timerUpdateThread != null ) {
+//                    timerUpdateThread.interrupt();
+//                }
+//            }
+//
+//            mediaPlayer.reset();
+//
+//            mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+//            try {
+//                mediaPlayer.setDataSource(audioBook.getPreview_audio());
+//            } catch (IOException e) {
+//                Log.v("playPreview", "IOException" + e.getMessage());
+//
+//                e.printStackTrace();
+//            }
+//            mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+//                public void onPrepared(MediaPlayer mp) {
+//                    isPlayingPreview=true;
+//                    isLoadingPreview=false;
+//                    startTimer();
+//                    mp.start();
+//                    updatePreviewLayout();
+//                    WakeLocker.acquire(getApplicationContext());
+//                }
+//            });
+//            mediaPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
+//                public boolean onError(MediaPlayer mp, int what, int extra) {
+//
+//                    return false;
+//                }
+//            });
+//            mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+//                @Override
+//                public void onCompletion(MediaPlayer mp) {
+//                    isPlayingPreview=false;
+//                    isLoadingPreview=false;
+//                    stopTimer();
+//                    updatePreviewLayout();
+//                    WakeLocker.release();
+//
+//                }
+//            });
+//            mediaPlayer.prepareAsync(); // prepare async to not block main
+//
+//
+//        } else {
+//
+//            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+//            builder.setTitle(R.string.NO_INTERNET_TITLE).setMessage(getString(R.string.NO_ENOUGH_SPACE_MESSAGE)).setPositiveButton(
+//                    getString(R.string.BUTTON_OK), new DialogInterface.OnClickListener() {
+//                        public void onClick(DialogInterface dialog, int id) {
+//                            // FIRE ZE MISSILES!
+//                        }
+//                    });
+//            AlertDialog dialog = builder.create();
+//            dialog.show();
+//        }
+//
+//    }
     private void updateAudioBook(int chapter){
         if(chapter>0) {
             audioBook.addChapterToDownloadedChapter(chapter);
@@ -998,7 +1205,9 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
 
                 }
                 if (downloadedFileCount == totalAudioFileCount) {
-                    mProgressDialog.dismiss();
+                    if ( mProgressDialog!=null && mProgressDialog.isShowing() ){
+                        mProgressDialog.dismiss();
+                    }
                     starAudioPlayer();
 
 
@@ -1006,16 +1215,24 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
                     if (AppUtils.getAvailableMemory() < audioBook.getFileSize()) {
                         stopDownload();
 
-                        AlertDialog.Builder builder = new AlertDialog.Builder(
-                                this);
-                        builder.setTitle(R.string.NO_ENOUGH_SPACE_TITLE).setMessage(R.string.NO_ENOUGH_SPACE_MESSAGE).setPositiveButton(
-                                R.string.BUTTON_OK, new DialogInterface.OnClickListener() {
-                                    public void onClick(DialogInterface dialog, int id) {
-                                        // FIRE ZE MISSILES!
-                                    }
-                                });
-                        AlertDialog dialog = builder.create();
-                        dialog.show();
+
+                                if (!isFinishing()) {
+
+                                    AlertDialog.Builder builder = new AlertDialog.Builder(
+                                            this);
+                                    builder.setTitle(R.string.NO_ENOUGH_SPACE_TITLE).setMessage(R.string.NO_ENOUGH_SPACE_MESSAGE).setPositiveButton(
+                                            R.string.BUTTON_OK, new DialogInterface.OnClickListener() {
+                                                public void onClick(DialogInterface dialog, int id) {
+                                                    // FIRE ZE MISSILES!
+                                                }
+                                            });
+                                    AlertDialog dialog = builder.create();
+                                    dialog.show();
+
+                                }
+
+
+
 
                     } else {
                         mProgressDialog.setMessage("Downloading " + (audioBook.getDownloadedChapter().size() + 1) + " of " + audioBook.getAudioFileCount());
@@ -1036,19 +1253,24 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
 
                 }
                 if (downloadedFileCount == totalAudioFileCount) {
-                    mProgressDialog.dismiss();
+                    if ( mProgressDialog!=null && mProgressDialog.isShowing() ){
+                        mProgressDialog.dismiss();
+                    }
                     starAudioPlayer();
                 } else {
-                    AlertDialog.Builder builder = new AlertDialog.Builder(
-                            this);
-                    builder.setTitle(R.string.NO_INTERNET_TITLE).setMessage(getString(R.string.NO_INTERNET_MESSAGE)).setPositiveButton(
-                            getString(R.string.BUTTON_OK), new DialogInterface.OnClickListener() {
-                                public void onClick(DialogInterface dialog, int id) {
-                                    // FIRE ZE MISSILES!
-                                }
-                            });
-                    AlertDialog dialog = builder.create();
-                    dialog.show();
+                    if (!isFinishing()) {
+
+                        AlertDialog.Builder builder = new AlertDialog.Builder(
+                                this);
+                        builder.setTitle(R.string.NO_INTERNET_TITLE).setMessage(getString(R.string.NO_INTERNET_MESSAGE)).setPositiveButton(
+                                getString(R.string.BUTTON_OK), new DialogInterface.OnClickListener() {
+                                    public void onClick(DialogInterface dialog, int id) {
+                                        // FIRE ZE MISSILES!
+                                    }
+                                });
+                        AlertDialog dialog = builder.create();
+                        dialog.show();
+                    }
                 }
             }
         }
@@ -1056,13 +1278,19 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
 
     private void starAudioPlayer() {
         if (previousDownloadedFileCount == 0) {
-            PlayerControllerActivity.navigate(this, bookCoverImage, audioBook);
+            if ( mProgressDialog!=null && mProgressDialog.isShowing() ){
+                mProgressDialog.dismiss();
+            }
+            PlayerControllerActivity.navigate(AudioBookDetailActivity.this, bookCoverImage, audioBook);
 
         } else {
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
             builder.setTitle(R.string.DOWNLOAD_COMPLETE_TITLE).setMessage(getString(R.string.DOWNLOAD_COMPLETE_MESSAGE)).setPositiveButton(
                     R.string.BUTTON_YES, new DialogInterface.OnClickListener() {
                         public void onClick(DialogInterface dialog, int id) {
+                            if ( mProgressDialog!=null && mProgressDialog.isShowing() ){
+                                mProgressDialog.dismiss();
+                            }
                             PlayerControllerActivity.navigate(AudioBookDetailActivity.this, bookCoverImage, audioBook);
 
                         }
@@ -1589,29 +1817,29 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
         }
 
     }
-    private void startTimer(){
-        if( timerUpdateThread != null) {
-            timerUpdateThread.interrupt();
-        }
-        timerUpdateThread = new Thread( this );
-        timerUpdateThread.start();
-    }
-    private void stopTimer(){
-        if( timerUpdateThread != null ) {
-            timerUpdateThread.interrupt();
-        }
-    }
+//    private void startTimer(){
+//        if( timerUpdateThread != null) {
+//            timerUpdateThread.interrupt();
+//        }
+//        timerUpdateThread = new Thread( this );
+//        timerUpdateThread.start();
+//    }
+//    private void stopTimer(){
+//        if( timerUpdateThread != null ) {
+//            timerUpdateThread.interrupt();
+//        }
+//    }
 
-    private void releaseMediaPlayer(){
-        if (mediaPlayer != null){
-            if(mediaPlayer.isPlaying())
-                mediaPlayer.stop();
-            mediaPlayer.release();
-            mediaPlayer=null;
-
-        }
-        stopTimer();
-    }
+//    private void releaseMediaPlayer(){
+//        if (mediaPlayer != null){
+//            if(mediaPlayer.isPlaying())
+//                mediaPlayer.stop();
+//            mediaPlayer.release();
+//            mediaPlayer=null;
+//
+//        }
+//        stopTimer();
+//    }
 
 
     private void initActivityTransitions() {
@@ -1683,36 +1911,36 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
 
     }
 
-    @Override
-    public void run() {
-        int currentPosition = 0;//
-        while (mediaPlayer != null && mediaPlayer.isPlaying() && currentPosition < mediaPlayer.getDuration()) {
-            try {
-                Thread.sleep(1000);
-                currentPosition = mediaPlayer.getCurrentPosition();
-
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            updateTimer();
-        }
-    }
-    private void updateTimer() {
-        int currentPosition = mediaPlayer.getCurrentPosition();
-        int totalDuration =mediaPlayer.getDuration();
-        leftTime= AppUtils.milliSecondsToTimer(totalDuration - currentPosition);
-        // Get a handler that can be used to post to the main thread
-        Handler mainHandler = new Handler(this.getMainLooper());
-
-        Runnable timerRunnable = new Runnable() {
-            @Override
-            public void run() {
-                updatePreviewLayout();
-
-            } // This is your code
-        };
-        mainHandler.post(timerRunnable);
-    }
+//    @Override
+//    public void run() {
+//        int currentPosition = 0;//
+//        while (mediaPlayer != null && mediaPlayer.isPlaying() && currentPosition < mediaPlayer.getDuration()) {
+//            try {
+//                Thread.sleep(1000);
+//                currentPosition = mediaPlayer.getCurrentPosition();
+//
+//            } catch (Exception e) {
+//                e.printStackTrace();
+//            }
+//            updateTimer();
+//        }
+//    }
+//    private void updateTimer() {
+//        int currentPosition = mediaPlayer.getCurrentPosition();
+//        int totalDuration =mediaPlayer.getDuration();
+//        leftTime= AppUtils.milliSecondsToTimer(totalDuration - currentPosition);
+//        // Get a handler that can be used to post to the main thread
+//        Handler mainHandler = new Handler(this.getMainLooper());
+//
+//        Runnable timerRunnable = new Runnable() {
+//            @Override
+//            public void run() {
+//                updatePreviewLayout();
+//
+//            } // This is your code
+//        };
+//        mainHandler.post(timerRunnable);
+//    }
 
     @Override
     public void onPostExecute(String result,String file_name) {
@@ -1742,8 +1970,9 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
 
     private void showMessage(String result){
         stopDownload();
-        mProgressDialog.dismiss();
-
+        if ( mProgressDialog!=null && mProgressDialog.isShowing() ){
+            mProgressDialog.dismiss();
+        }
         if (result.equalsIgnoreCase("UNAUTHORISED")){
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
 
@@ -1994,9 +2223,9 @@ public class AudioBookDetailActivity extends  AppCompatActivity implements Runna
         public void onReceive(Context context, Intent intent) {
             // Extract data included in the Intent
             playerControllerView.updateView();
-            if(AudioPlayerService.mediaPlayer!=null && AudioPlayerService.mediaPlayer.isPlaying()) {
-                releaseMediaPlayer();
-            }
+//            if(AudioPlayerService.mediaPlayer!=null && AudioPlayerService.mediaPlayer.isPlaying()) {
+//                releaseMediaPlayer();
+//            }
         }
     };
 

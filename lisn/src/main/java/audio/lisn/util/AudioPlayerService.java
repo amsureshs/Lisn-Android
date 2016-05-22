@@ -129,7 +129,7 @@ public class AudioPlayerService extends Service implements Runnable, OnCompletio
 
 		        String s = ex.toString();
 		        ex.printStackTrace();
-                Log.v("play Exception",ex.toString());
+                Log.v("play Exception", ex.toString());
 
             }
 		}
@@ -158,7 +158,7 @@ public class AudioPlayerService extends Service implements Runnable, OnCompletio
 				byte[] decodedData = AppUtils.decodeFile(contents);
                 playDecodedAudioFile(decodedData);
 			} catch (Exception e) {
-                Log.v("playAudioBook Exception",e.toString());
+                Log.v("playAudioBook Exception", e.toString());
 				e.printStackTrace();
 			}
 		}
@@ -247,7 +247,7 @@ public class AudioPlayerService extends Service implements Runnable, OnCompletio
             mState = State.Playing;
 
         }else{
-            Log.v("onPrepared","player");
+            Log.v("onPrepared", "player");
         }
         updatePlaybackState();
 
@@ -310,6 +310,20 @@ public class AudioPlayerService extends Service implements Runnable, OnCompletio
 
     }
 
+    public  void seekToForward(boolean forward){
+        Log.v(TAG,"seekToForward start" +mediaPlayer.getCurrentPosition());
+
+        if(forward){
+            mediaPlayer.seekTo(mediaPlayer.getCurrentPosition() + 30000);
+
+        }else{
+            mediaPlayer.seekTo(mediaPlayer.getCurrentPosition() - 30000);
+
+        }
+        Log.v(TAG,"seekToForward end" +mediaPlayer.getCurrentPosition());
+
+    }
+
     // Send an Intent with an action named "my-event".
     private void sendMessage() {
         Log.v(TAG,"sendMessage start");
@@ -317,7 +331,7 @@ public class AudioPlayerService extends Service implements Runnable, OnCompletio
         if(mediaPlayer !=null && hasStartedPlayer) {
             Log.v(TAG, "sendMessage");
 
-            Intent intent = new Intent("audio-event");
+            Intent intent = new Intent(Constants.PLAYER_STATE_UPDATE);
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         }else{
           //  stopForeground(true);
